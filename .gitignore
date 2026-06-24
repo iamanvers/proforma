@@ -1,0 +1,30 @@
+node_modules
+dist
+dist-ssr
+coverage
+*.local
+.DS_Store
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Cloudflare Worker
+worker/dist
+worker/.wrangler
+.dev.vars
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Harness
+.remember
+.claude

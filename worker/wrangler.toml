@@ -1,0 +1,18 @@
+name = "proforma-llm-proxy"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+# Public-ish config. Set to your GitHub Pages origin, e.g.
+# "https://<user>.github.io". Secrets are NOT here — use `wrangler secret put`:
+#   wrangler secret put OPENROUTER_API_KEY
+#   wrangler secret put TURNSTILE_SECRET   (optional, enables bot protection)
+[vars]
+ALLOWED_ORIGIN = "https://example.github.io"
+
+# Cloudflare Rate Limiting API binding (per-IP). Tune limit/period to ration the
+# shared free pool. namespace_id is an arbitrary unique integer string.
+[[unsafe.bindings]]
+name = "RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 30, period = 60 }

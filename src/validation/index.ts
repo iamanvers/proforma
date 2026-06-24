@@ -1,0 +1,32 @@
+import type { Model } from '../engine/types.ts';
+import type { ModelAssumptions } from '../engine/schema.ts';
+import type { CheckResult, ValidationReport } from './types.ts';
+import { checkAssumptions, checkCircular, checkLogic, checkMath } from './checks.ts';
+
+export * from './types.ts';
+
+/**
+ * Run the full validation catalog over an engine `Model`. When the originating
+ * `assumptions` are supplied, the assumption-sanity checks (category 3) also
+ * run. Excel-mechanics checks (category 5) are added in P3.
+ */
+export function validateModel(
+  model: Model,
+  assumptions?: ModelAssumptions,
+): ValidationReport {
+  const results: CheckResult[] = [];
+
+  checkMath(results, model);
+  checkCircular(results, model);
+  checkLogic(results, model);
+  if (assumptions) checkAssumptions(results, assumptions);
+
+  const summary = { pass: 0, warn: 0, fail: 0, total: results.length };
+  for (const r of results) {
+    if (r.status === 'pass') summary.pass++;
+    else if (r.status === 'warn') summary.warn++;
+    else summary.fail++;
+  }
+
+  return { results, summary, ok: summary.fail === 0 };
+}
