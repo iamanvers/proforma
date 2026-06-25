@@ -76,6 +76,8 @@ export const ModelAssumptionsSchema = z.object({
 });
 
 export type ModelAssumptions = z.infer<typeof ModelAssumptionsSchema>;
+/** Raw (pre-default) input accepted by {@link parseAssumptions}. */
+export type ModelAssumptionsInput = z.input<typeof ModelAssumptionsSchema>;
 export type OpeningBalance = z.infer<typeof OpeningBalanceSchema>;
 
 /** Parse + apply defaults; throws ZodError on invalid input. */

@@ -1,18 +1,21 @@
 import type { Model } from '../engine/types.ts';
 import type { ModelAssumptions } from '../engine/schema.ts';
+import type { DCFResult } from '../engine/dcf.ts';
 import type { CheckResult, ValidationReport } from './types.ts';
-import { checkAssumptions, checkCircular, checkLogic, checkMath } from './checks.ts';
+import { checkAssumptions, checkCircular, checkDCF, checkLogic, checkMath } from './checks.ts';
 
 export * from './types.ts';
 
 /**
  * Run the full validation catalog over an engine `Model`. When the originating
  * `assumptions` are supplied, the assumption-sanity checks (category 3) also
- * run. Excel-mechanics checks (category 5) are added in P3.
+ * run; when a `dcf` valuation is supplied, its tie-outs and logic checks run
+ * too. Excel-mechanics checks (category 5) are added in P3.
  */
 export function validateModel(
   model: Model,
   assumptions?: ModelAssumptions,
+  dcf?: DCFResult,
 ): ValidationReport {
   const results: CheckResult[] = [];
 
@@ -20,6 +23,7 @@ export function validateModel(
   checkCircular(results, model);
   checkLogic(results, model);
   if (assumptions) checkAssumptions(results, assumptions);
+  if (dcf) checkDCF(results, dcf);
 
   const summary = { pass: 0, warn: 0, fail: 0, total: results.length };
   for (const r of results) {

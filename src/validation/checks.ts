@@ -1,5 +1,6 @@
 import type { BalanceSheet, Model, Period } from '../engine/types.ts';
 import type { ModelAssumptions } from '../engine/schema.ts';
+import type { DCFResult } from '../engine/dcf.ts';
 import type { CheckCategory, CheckResult, Severity } from './types.ts';
 
 /**
@@ -402,5 +403,100 @@ export function checkAssumptions(out: CheckResult[], a: ModelAssumptions): void 
       ? `Implied EBITDA margin before fixed SG&A is ${fmt(opMargin * 100)}%.`
       : `COGS + SG&A (${fmt((d.cogsPctRevenue + d.sgaPctRevenue) * 100)}%) leave no operating margin.`,
     { actual: opMargin },
+  );
+}
+
+// ── DCF: math tie-outs + financial logic ─────────────────────────────────────
+
+export function checkDCF(out: CheckResult[], dcf: DCFResult): void {
+  const math: Base = { id: 'dcf.ev-crossfoot', category: 'math', title: 'Enterprise value ties out' };
+  tie(
+    out,
+    math,
+    'EV = PV(forecast UFCF) + PV(terminal value)',
+    dcf.enterpriseValue,
+    dcf.pvOfForecast + dcf.pvOfTerminalValue,
+    Math.max(1, Math.abs(dcf.enterpriseValue)),
+  );
+  tie(
+    out,
+    { id: 'dcf.equity-bridge', category: 'math', title: 'Equity value bridge ties out' },
+    'Equity value = EV − net debt',
+    dcf.equityValue,
+    dcf.enterpriseValue - dcf.netDebt,
+    Math.max(1, Math.abs(dcf.equityValue)),
+  );
+  tie(
+    out,
+    { id: 'dcf.netdebt-crossfoot', category: 'math', title: 'Net debt crossfoot' },
+    'Net debt = total debt − cash',
+    dcf.netDebt,
+    dcf.totalDebt - dcf.cash,
+    Math.max(1, Math.abs(dcf.totalDebt)),
+  );
+  tie(
+    out,
+    { id: 'dcf.pv-forecast-sum', category: 'math', title: 'PV of forecast crossfoot' },
+    'PV of forecast = Σ discounted UFCF',
+    dcf.pvOfForecast,
+    dcf.periods.reduce((s, p) => s + p.presentValue, 0),
+    Math.max(1, Math.abs(dcf.pvOfForecast)),
+  );
+
+  // Gordon model is only well-defined when WACC > terminal growth.
+  rec(
+    out,
+    { id: 'dcf.wacc-gt-growth', category: 'logic', title: 'WACC exceeds terminal growth' },
+    dcf.terminalMethod === 'exitMultiple' || dcf.terminalValid ? 'pass' : 'fail',
+    'error',
+    dcf.terminalMethod === 'exitMultiple'
+      ? `Exit-multiple terminal value (no perpetuity constraint).`
+      : dcf.terminalValid
+        ? `WACC (${fmt(dcf.wacc * 100)}%) exceeds terminal growth — Gordon model is well-defined.`
+        : `WACC (${fmt(dcf.wacc * 100)}%) does not exceed terminal growth; the perpetuity is invalid.`,
+    { actual: dcf.wacc },
+  );
+
+  // Cost of equity should exceed after-tax cost of debt.
+  rec(
+    out,
+    { id: 'dcf.ke-gt-kd', category: 'logic', title: 'Cost of equity exceeds cost of debt' },
+    dcf.costOfEquity >= dcf.costOfDebtAfterTax ? 'pass' : 'warn',
+    'warn',
+    dcf.costOfEquity >= dcf.costOfDebtAfterTax
+      ? `Cost of equity (${fmt(dcf.costOfEquity * 100)}%) ≥ after-tax cost of debt (${fmt(dcf.costOfDebtAfterTax * 100)}%).`
+      : `Cost of equity (${fmt(dcf.costOfEquity * 100)}%) is below after-tax cost of debt — unusual.`,
+  );
+
+  // Enterprise value should be positive.
+  rec(
+    out,
+    { id: 'dcf.ev-positive', category: 'logic', title: 'Enterprise value is positive' },
+    dcf.enterpriseValue > 0 ? 'pass' : 'warn',
+    'warn',
+    dcf.enterpriseValue > 0
+      ? `Enterprise value is ${fmt(dcf.enterpriseValue)}.`
+      : `Enterprise value is non-positive (${fmt(dcf.enterpriseValue)}).`,
+    { actual: dcf.enterpriseValue },
+  );
+
+  // A terminal value dominating EV signals over-reliance on the long-run assumption.
+  range(
+    out,
+    { id: 'dcf.tv-share', category: 'logic', title: 'Terminal value share of EV' },
+    'Terminal value as % of EV',
+    dcf.terminalValuePctOfEV,
+    0,
+    0.85,
+  );
+
+  // WACC should land in a plausible band.
+  range(
+    out,
+    { id: 'dcf.wacc-range', category: 'assumptions', title: 'WACC plausible' },
+    'WACC',
+    dcf.wacc,
+    0.04,
+    0.2,
   );
 }
