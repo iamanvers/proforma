@@ -1,33 +1,33 @@
 @import 'tailwindcss';
 
 /* ── ProForma design tokens ─────────────────────────────────────────────────
-   pulze.io-inspired dark canvas with a soft "aurora" glow, recoloured to a
-   light Citi-blue palette, and set in Georgia for a calmer, editorial feel. */
+   Light, calm, Citi-blue. Georgia for display headings (editorial), a clean
+   system sans for UI and dense financial data. No dark theme. */
 @theme {
-  /* Georgia everywhere (with graceful serif fallbacks). */
-  --font-sans: Georgia, 'Times New Roman', 'Nimbus Roman', serif;
-  --font-serif: Georgia, 'Times New Roman', 'Nimbus Roman', serif;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-display: Georgia, 'Times New Roman', 'Nimbus Roman', serif;
 
-  /* Light Citi-blue scale (50 = palest, 950 = deepest). */
-  --color-citi-50: #ecfaff;
-  --color-citi-100: #d3f2ff;
-  --color-citi-200: #b0e9ff;
-  --color-citi-300: #79dbff;
-  --color-citi-400: #38c5ff; /* the "light Citi blue" accent */
-  --color-citi-500: #0ea6ee;
-  --color-citi-600: #0285cb;
-  --color-citi-700: #056aa4;
-  --color-citi-800: #0a5986;
-  --color-citi-900: #0e496e;
-  --color-citi-950: #062d49;
+  /* Citi-blue scale (50 = palest, 950 = deepest). 700/800 = brand blue. */
+  --color-citi-50: #eef6fc;
+  --color-citi-100: #d8eaf7;
+  --color-citi-200: #b6d8f0;
+  --color-citi-300: #84bde4;
+  --color-citi-400: #4f9cd4;
+  --color-citi-500: #2a7dc0;
+  --color-citi-600: #1763a3;
+  --color-citi-700: #0f5089; /* primary brand blue */
+  --color-citi-800: #103f6c;
+  --color-citi-900: #11314f;
+  --color-citi-950: #0a1f34;
 
-  /* Near-black canvas tuned slightly blue, like pulze.io. */
-  --color-canvas: #04080f;
-  --color-canvas-soft: #070d18;
+  --color-ink: #0f1b2d;
+  --color-muted: #5b6b7f;
+  --color-canvas: #f5f8fc;
+  --color-line: #e2e8f1;
 }
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 html {
@@ -36,100 +36,35 @@ html {
 
 body {
   margin: 0;
-  background-color: var(--color-canvas);
-  color: #e8eef6;
+  background:
+    radial-gradient(60rem 28rem at 50% -8rem, rgba(23, 99, 163, 0.1), transparent 70%),
+    var(--color-canvas);
+  background-attachment: fixed;
+  color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-/* ── Aurora ─────────────────────────────────────────────────────────────────
-   Three blurred radial blobs that drift slowly behind the content. Sits in a
-   fixed, non-interactive layer so it never affects layout or clicks. */
-.aurora {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.aurora::before,
-.aurora::after,
-.aurora > span {
-  content: '';
-  position: absolute;
-  border-radius: 9999px;
-  filter: blur(110px);
-  opacity: 0.55;
-  will-change: transform;
-}
-
-/* top-left, brightest light-Citi-blue */
-.aurora::before {
-  width: 46rem;
-  height: 46rem;
-  top: -14rem;
-  left: -10rem;
-  background: radial-gradient(circle at center, #38c5ff 0%, rgba(56, 197, 255, 0) 70%);
-  animation: aurora-drift-a 22s ease-in-out infinite alternate;
-}
-
-/* right side, deeper Citi blue */
-.aurora::after {
-  width: 40rem;
-  height: 40rem;
-  top: -6rem;
-  right: -12rem;
-  background: radial-gradient(circle at center, #0285cb 0%, rgba(2, 133, 203, 0) 70%);
-  animation: aurora-drift-b 26s ease-in-out infinite alternate;
-}
-
-/* lower-centre wash, palest blue */
-.aurora > span {
-  width: 52rem;
-  height: 34rem;
-  bottom: -18rem;
-  left: 50%;
-  transform: translateX(-50%);
-  background: radial-gradient(circle at center, #79dbff 0%, rgba(121, 219, 255, 0) 72%);
-  opacity: 0.32;
-  animation: aurora-drift-c 30s ease-in-out infinite alternate;
-}
-
-@keyframes aurora-drift-a {
-  from { transform: translate(0, 0) scale(1); }
-  to { transform: translate(6rem, 4rem) scale(1.12); }
-}
-@keyframes aurora-drift-b {
-  from { transform: translate(0, 0) scale(1); }
-  to { transform: translate(-5rem, 5rem) scale(1.08); }
-}
-@keyframes aurora-drift-c {
-  from { transform: translateX(-50%) scale(1); }
-  to { transform: translateX(-46%) scale(1.15); }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .aurora::before,
-  .aurora::after,
-  .aurora > span {
-    animation: none;
-  }
   html {
     scroll-behavior: auto;
   }
 }
 
-/* Faint grid texture above the aurora, beneath the content. */
-.grid-veil {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
-  background-size: 64px 64px;
-  mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 30%, transparent 80%);
+/* Aligned, tabular figures for all financial numbers. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* Hide number-input spinners for a cleaner data-entry feel. */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
 }
