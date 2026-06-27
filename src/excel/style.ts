@@ -32,6 +32,7 @@ export const TAB_COLORS = {
   cover: 'FF1F3864',
   assumptions: 'FF2E5FAC',
   statement: 'FF595959',
+  ratios: 'FF6B46C1',
   dcf: 'FF2E7D32',
   checks: 'FFB7791F',
 } as const;

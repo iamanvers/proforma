@@ -23,6 +23,7 @@ const SHEET = {
   is: 'Income Statement',
   bs: 'Balance Sheet',
   cf: 'Cash Flow',
+  ratios: 'Ratios',
   dcf: 'DCF',
   checks: 'Checks',
 } as const;
@@ -409,6 +410,82 @@ export async function buildWorkbook(
     formula(SHEET.bs, 'commonEquity', t, `${b('commonEquity', t - 1)}+new_equity`, bsVal('commonEquity', t), 'formula', FMT.currency);
     formula(SHEET.bs, 'retainedEarnings', t, `${b('retainedEarnings', t - 1)}+${is('netIncome')}+${c('dividends', t)}`, bsVal('retainedEarnings', t), 'link', FMT.currency);
     writeBalanceSubtotals(t);
+  }
+
+  // ════════════════ Ratios & Analysis ════════════════════════════════════════
+  addSheet(SHEET.ratios, { tab: TAB_COLORS.ratios });
+  writeChrome(SHEET.ratios, false);
+  layoutStatement(SHEET.ratios, [
+    { kind: 'section', label: 'Margins' },
+    { key: 'grossMargin', label: 'Gross margin', kind: 'line' },
+    { key: 'ebitdaMargin', label: 'EBITDA margin', kind: 'line' },
+    { key: 'ebitMargin', label: 'EBIT margin', kind: 'line' },
+    { key: 'netMargin', label: 'Net margin', kind: 'line' },
+    { kind: 'section', label: 'Growth' },
+    { key: 'revGrowth', label: 'Revenue growth (YoY)', kind: 'line' },
+    { key: 'niGrowth', label: 'Net income growth (YoY)', kind: 'line' },
+    { kind: 'section', label: 'Returns' },
+    { key: 'roe', label: 'Return on equity', kind: 'line' },
+    { key: 'roa', label: 'Return on assets', kind: 'line' },
+    { key: 'roic', label: 'Return on invested capital', kind: 'line' },
+    { kind: 'section', label: 'Credit & liquidity' },
+    { key: 'netDebtEbitda', label: 'Net debt / EBITDA', kind: 'line' },
+    { key: 'coverage', label: 'Interest coverage (EBIT)', kind: 'line' },
+    { key: 'currentRatio', label: 'Current ratio', kind: 'line' },
+    { kind: 'section', label: 'Cash generation' },
+    { key: 'fcf', label: 'Free cash flow (CFO + CFI)', kind: 'line' },
+    { key: 'fcfConv', label: 'FCF / EBITDA', kind: 'line' },
+  ]);
+  for (let t = 1; t <= N; t++) {
+    const p = model.periods[t - 1]!;
+    const is = (k: keyof IncomeStatement) => layout.ref(SHEET.is, k, t);
+    const bs = (k: keyof BalanceSheet) => layout.ref(SHEET.bs, k, t);
+    const cfr = (k: string) => layout.ref(SHEET.cf, k, t);
+    const rr = (key: string, f: string, result: number, fmt: string) =>
+      formula(SHEET.ratios, key, t, f, result, 'formula', fmt);
+    const interest = p.income.revolverInterest + p.income.termLoanInterest;
+    const investedCapital = p.balance.revolver + p.balance.termLoan + p.balance.totalEquity - p.balance.cash;
+    const prevNI = t === 1 ? undefined : model.periods[t - 2]!.income.netIncome;
+
+    rr('grossMargin', `${is('grossProfit')}/${is('revenue')}`, p.income.grossProfit / p.income.revenue, FMT.percent);
+    rr('ebitdaMargin', `${is('ebitda')}/${is('revenue')}`, p.income.ebitda / p.income.revenue, FMT.percent);
+    rr('ebitMargin', `${is('ebit')}/${is('revenue')}`, p.income.ebit / p.income.revenue, FMT.percent);
+    rr('netMargin', `${is('netIncome')}/${is('revenue')}`, p.income.netIncome / p.income.revenue, FMT.percent);
+    rr(
+      'revGrowth',
+      t === 1 ? `${is('revenue')}/revenueBase-1` : `${is('revenue')}/${layout.ref(SHEET.is, 'revenue', t - 1)}-1`,
+      p.income.revenue / (t === 1 ? assumptions.revenueBase : model.periods[t - 2]!.income.revenue) - 1,
+      FMT.percent,
+    );
+    rr(
+      'niGrowth',
+      t === 1 ? '0' : `IF(${layout.ref(SHEET.is, 'netIncome', t - 1)}=0,0,${is('netIncome')}/${layout.ref(SHEET.is, 'netIncome', t - 1)}-1)`,
+      prevNI === undefined || prevNI === 0 ? 0 : p.income.netIncome / prevNI - 1,
+      FMT.percent,
+    );
+    rr('roe', `${is('netIncome')}/${bs('totalEquity')}`, p.income.netIncome / p.balance.totalEquity, FMT.percent);
+    rr('roa', `${is('netIncome')}/${bs('totalAssets')}`, p.income.netIncome / p.balance.totalAssets, FMT.percent);
+    rr(
+      'roic',
+      `${is('ebit')}*(1-tax_rate)/(${bs('revolver')}+${bs('termLoan')}+${bs('totalEquity')}-${bs('cash')})`,
+      investedCapital !== 0 ? (p.income.ebit * (1 - assumptions.drivers.taxRate)) / investedCapital : 0,
+      FMT.percent,
+    );
+    rr(
+      'netDebtEbitda',
+      `(${bs('revolver')}+${bs('termLoan')}-${bs('cash')})/${is('ebitda')}`,
+      (p.balance.revolver + p.balance.termLoan - p.balance.cash) / p.income.ebitda,
+      FMT.multiple,
+    );
+    rr(
+      'coverage',
+      `IF((${is('revolverInterest')}+${is('termLoanInterest')})=0,0,${is('ebit')}/(${is('revolverInterest')}+${is('termLoanInterest')}))`,
+      interest > 1e-9 ? p.income.ebit / interest : 0,
+      FMT.multiple,
+    );
+    rr('currentRatio', `${bs('totalCurrentAssets')}/${bs('totalCurrentLiabilities')}`, p.balance.totalCurrentAssets / p.balance.totalCurrentLiabilities, FMT.multiple);
+    rr('fcf', `${cfr('cfo')}+${cfr('cfi')}`, p.cashFlow.cfo + p.cashFlow.cfi, FMT.currency);
+    rr('fcfConv', `(${cfr('cfo')}+${cfr('cfi')})/${is('ebitda')}`, (p.cashFlow.cfo + p.cashFlow.cfi) / p.income.ebitda, FMT.percent);
   }
 
   // ════════════════ DCF (optional) ═══════════════════════════════════════════

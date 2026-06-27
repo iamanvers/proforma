@@ -56,6 +56,7 @@ describe('Excel export — structure', () => {
       'Income Statement',
       'Balance Sheet',
       'Cash Flow',
+      'Ratios',
       'DCF',
       'Checks',
     ]);
@@ -104,6 +105,15 @@ describe('Excel export — cached results equal the engine', () => {
     const row = findRow(cfWs, (l) => l === 'Ending cash');
     for (let t = 1; t <= N(); t++) {
       expect(cached(cfWs, row, periodCol(t))).toBeCloseTo(model.periods[t - 1]!.balance.cash, 3);
+    }
+  });
+
+  it('ratios: EBITDA margin matches the engine every period', () => {
+    const r = wb.getWorksheet('Ratios')!;
+    const row = findRow(r, (l) => l === 'EBITDA margin');
+    for (let t = 1; t <= N(); t++) {
+      const p = model.periods[t - 1]!;
+      expect(cached(r, row, periodCol(t))).toBeCloseTo(p.income.ebitda / p.income.revenue, 6);
     }
   });
 
