@@ -21,7 +21,7 @@ schema, validation checks, and Excel sheet layout.
 |---|-------|--------|-----------------------------------------------|-------------------|
 | 1 | **Integrated 3-statement** | ✅ done | IS/BS/CFS linkage; debt + revolver-as-plug; PP&E & working-capital schedules; revolver↔interest circularity | `threeStatement`, `schedules`, `circular` |
 | 2 | **DCF** | ✅ done | UFCF, CAPM WACC, perpetuity + exit-multiple TV, mid-year, net-debt bridge, sensitivity | `dcf` |
-| 3 | **LBO** | next | Sources & uses, purchase-price allocation, debt tranches (TLA/TLB/bonds/PIK) + cash sweep, management options, returns (IRR/MOIC), credit stats (leverage, coverage), covenant headroom | `lbo`, reuse `circular` for the sweep |
+| 3 | **LBO** | ✅ engine | Sources & uses, multi-tranche debt (incl. PIK) + mandatory amort + cash sweep + revolver, returns (IRR/MOIC), credit stats (leverage, coverage). *Excel tab + UI wiring next.* Roadmap: purchase-price allocation, management options, covenant headroom | `lbo`, `validateLBO` |
 | 4 | **Trading comps** | planned | Public-company set; LTM/calendarization; EV & equity-value multiples (EV/EBITDA, EV/EBIT, P/E, EV/Revenue); mean/median/quartiles; implied valuation range | `comps`, `marketData` adapters |
 | 5 | **Precedent transactions** | planned | Deal set; announced-deal multiples; control premia; implied range | `precedents` (shares comp infra) |
 | 6 | **M&A accretion / dilution** | planned | Pro-forma combination; cash/stock/mix consideration; synergies; new debt; goodwill & PPA; EPS accretion/dilution; breakeven synergies/premium | `mna`, reuse `threeStatement` for pro-forma combine |

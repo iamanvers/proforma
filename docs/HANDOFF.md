@@ -12,8 +12,12 @@ works end-to-end, entirely client-side, with **zero LLM calls**.
 - **Engine** (`src/engine/`, pure TS): 3-statement model + schedules + revolver-as-plug circular
   solver; **DCF** (UFCF, CAPM WACC, perpetuity + exit-multiple terminal value, mid-year, net-debt
   bridge, per-share, `buildSensitivity`). DCF reuses the 3-statement core.
-- **Validation** (`src/validation/`): math / circular / logic / assumptions + DCF checks.
-  `validateModel(model, assumptions?, dcf?)`.
+- **LBO** (`src/engine/lbo.ts`): sources & uses, multi-tranche debt (incl. PIK) with mandatory
+  amortization + excess-cash sweep + revolver backstop, sponsor returns (MOIC / IRR closed form),
+  and per-year credit stats (leverage, interest coverage). Interest on beginning balances (non-
+  circular). `computeLBO` / `runLBO`. *Not yet wired into Excel or the UI.*
+- **Validation** (`src/validation/`): math / circular / logic / assumptions + DCF + LBO checks.
+  `validateModel(model, assumptions?, dcf?)`, `validateLBO(lbo)`.
 - **Excel** (`src/excel/`): `buildWorkbook(model, assumptions, dcfAssumptions?) → Uint8Array`.
   Bank-grade: Arial, gridlines off, accountant number formats, color-coded tabs, named ranges,
   print setup, live formulas with cached results, revolver circularity as live formulas, calcPr
@@ -61,8 +65,8 @@ npm run typecheck | lint | build
    → suggested assumptions the user reviews.
 4. **`src/llm/`**: OpenRouter client via Worker proxy / BYOK, queue with backoff, assumption
    suggestions + prose. Worker already scaffolded in `worker/`.
-5. **Next engine model: LBO** (`src/engine/lbo.ts`) — sources & uses, debt tranches + cash sweep
-   (reuse `circular`), returns (IRR/MOIC), credit stats. Then comps / precedents / M&A. See
+5. **LBO is built (engine + validation + tests).** Next for it: an Excel tab (sources & uses, debt
+   schedule, returns) and a UI mode/toggle to run it; then trading comps / precedents / M&A. See
    `MODEL_CATALOG.md`.
 
 ## Deployment (see also README §Deployment)

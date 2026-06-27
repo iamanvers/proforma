@@ -3,6 +3,7 @@ export * from './schema.ts';
 export * from './schedules.ts';
 export * from './circular.ts';
 export * from './dcf.ts';
+export * from './lbo.ts';
 export { buildModel } from './threeStatement.ts';
 
 import type { Model } from './types.ts';

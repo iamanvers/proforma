@@ -1,6 +1,7 @@
 import type { BalanceSheet, Model, Period } from '../engine/types.ts';
 import type { ModelAssumptions } from '../engine/schema.ts';
 import type { DCFResult } from '../engine/dcf.ts';
+import type { LBOResult } from '../engine/lbo.ts';
 import type { CheckCategory, CheckResult, Severity } from './types.ts';
 
 /**
@@ -499,4 +500,83 @@ export function checkDCF(out: CheckResult[], dcf: DCFResult): void {
     0.04,
     0.2,
   );
+}
+
+// ── LBO: sources & uses tie-out + credit logic ───────────────────────────────
+
+export function checkLBO(out: CheckResult[], lbo: LBOResult): void {
+  const su = lbo.sourcesUses;
+  tie(
+    out,
+    { id: 'lbo.sources-uses', category: 'math', title: 'Sources = Uses' },
+    'Total sources = total uses',
+    su.totalSources,
+    su.totalUses,
+    Math.max(1, Math.abs(su.totalUses)),
+  );
+  tie(
+    out,
+    { id: 'lbo.uses-crossfoot', category: 'math', title: 'Uses crossfoot' },
+    'Uses = EV + fees + minimum cash',
+    su.totalUses,
+    su.entryEV + su.transactionFees + su.financingFees + su.minCash,
+    Math.max(1, Math.abs(su.totalUses)),
+  );
+
+  rec(
+    out,
+    { id: 'lbo.sponsor-equity-positive', category: 'logic', title: 'Sponsor equity is positive' },
+    su.sponsorEquity > 0 ? 'pass' : 'fail',
+    'error',
+    su.sponsorEquity > 0
+      ? `Sponsor writes ${fmt(su.sponsorEquity)} of equity.`
+      : `Sponsor equity is non-positive (${fmt(su.sponsorEquity)}); the deal is over-levered.`,
+    { actual: su.sponsorEquity },
+  );
+
+  range(
+    out,
+    { id: 'lbo.entry-leverage', category: 'assumptions', title: 'Entry leverage plausible' },
+    'Entry net debt / EBITDA',
+    su.entryLeverage,
+    0,
+    8,
+  );
+
+  const exitLev = lbo.periods[lbo.periods.length - 1]?.leverage ?? 0;
+  rec(
+    out,
+    { id: 'lbo.deleverages', category: 'logic', title: 'Business deleverages over the hold' },
+    exitLev <= su.entryLeverage + 1e-9 ? 'pass' : 'warn',
+    'warn',
+    exitLev <= su.entryLeverage + 1e-9
+      ? `Leverage falls from ${fmt(su.entryLeverage)}x to ${fmt(exitLev)}x.`
+      : `Leverage rises from ${fmt(su.entryLeverage)}x to ${fmt(exitLev)}x over the hold.`,
+    { actual: exitLev },
+  );
+
+  rec(
+    out,
+    { id: 'lbo.value-created', category: 'logic', title: 'Sponsor MOIC above 1.0x' },
+    lbo.returns.moic > 1 ? 'pass' : 'warn',
+    'warn',
+    lbo.returns.moic > 1
+      ? `MOIC ${fmt(lbo.returns.moic)}x · IRR ${fmt(lbo.returns.irr * 100)}%.`
+      : `MOIC ${fmt(lbo.returns.moic)}x — the sponsor does not create value at these assumptions.`,
+    { actual: lbo.returns.moic },
+  );
+
+  for (const p of lbo.periods) {
+    if (p.interestCoverage === Infinity) continue;
+    rec(
+      out,
+      { id: 'lbo.interest-coverage', category: 'logic', title: 'Interest coverage ≥ 1×', period: p.label },
+      p.interestCoverage >= 1 ? 'pass' : 'fail',
+      'error',
+      p.interestCoverage >= 1
+        ? `EBITDA covers interest ${fmt(p.interestCoverage)}× in ${p.label}.`
+        : `EBITDA covers interest only ${fmt(p.interestCoverage)}× in ${p.label} (< 1×).`,
+      { actual: p.interestCoverage },
+    );
+  }
 }
