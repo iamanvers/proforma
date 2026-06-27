@@ -28,9 +28,14 @@ function Logo() {
 
 export default function App() {
   return (
-    <div className="min-h-dvh">
+    <div className="relative min-h-dvh">
+      <div className="aurora" aria-hidden="true">
+        <span />
+      </div>
+
+      <div className="relative z-10">
       {/* Nav */}
-      <header className="sticky top-0 z-30 border-b border-line bg-white/80 backdrop-blur">
+      <header className="sticky top-0 z-30 border-b border-line bg-white/70 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <Logo />
           <nav className="flex items-center gap-6 text-sm text-citi-900">
@@ -114,6 +119,7 @@ export default function App() {
           <span>Not investment advice · no proprietary templates or book content.</span>
         </div>
       </footer>
+      </div>
     </div>
   );
 }

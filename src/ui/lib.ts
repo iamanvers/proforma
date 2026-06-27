@@ -29,6 +29,11 @@ export function downloadBytes(
   URL.revokeObjectURL(url);
 }
 
+/** Trigger a client-side text-file download (e.g. a Markdown README). */
+export function downloadText(text: string, filename: string, mime = 'text/markdown'): void {
+  downloadBytes(new TextEncoder().encode(text), filename, mime);
+}
+
 /** Filesystem-safe slug for a workbook filename. */
 export const slug = (s: string): string =>
   s.trim().replace(/[^\w-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'model';

@@ -21,10 +21,13 @@ works end-to-end, entirely client-side, with **zero LLM calls**.
   (`Layout`), `calcPr.ts`.
 - **Templates** (`src/templates/presets.ts`): SaaS / Industrial / Retail starter presets (public
   conventions only); openings balance by construction (common equity = plug).
-- **UI** (`src/ui/` + `App.tsx`): light Citi-blue theme, builder form with template picker,
-  in-browser generate → results (EV/equity/per-share/WACC + final-year snapshot + validation
-  notes) → one-click `.xlsx` download. ExcelJS is lazy-loaded (dynamic import) so first load is
-  light (~86 kB gzip).
+- **README export** (`src/export/readme.ts`): deterministic Markdown methodology note from the
+  model + validation report (no LLM) — validation status, key outputs, assumptions, DCF method,
+  per-year forecast table, methodology, disclaimer.
+- **UI** (`src/ui/` + `App.tsx`): light Citi-blue theme with a soft light **aurora** backdrop,
+  builder form with template picker, in-browser generate → results (EV/equity/per-share/WACC +
+  final-year snapshot + validation notes) → one-click **.xlsx and README** download. ExcelJS is
+  lazy-loaded (dynamic import) so first load is light (~86 kB gzip).
 - **Docs**: `PRD.md`, `MODEL_CATALOG.md` (full IB/PE model & document universe + reuse plan),
   `README.md`, this file.
 
@@ -54,9 +57,7 @@ npm run typecheck | lint | build
 1. **UI polish / a11y**: keyboard/focus states, mobile spacing, input validation messages, a
    compact statements preview table; consider a component smoke test (needs `@testing-library/react`,
    `environment: jsdom`).
-2. **README export**: deterministic methodology note generated from the model + validation report
-   (no LLM); later, LLM-written prose.
-3. **`src/inputs/`**: guided uploads (pdf.js text, Tesseract OCR, mammoth docx, xlsx/CSV historicals)
+2. **`src/inputs/`**: guided uploads (pdf.js text, Tesseract OCR, mammoth docx, xlsx/CSV historicals)
    → suggested assumptions the user reviews.
 4. **`src/llm/`**: OpenRouter client via Worker proxy / BYOK, queue with backoff, assumption
    suggestions + prose. Worker already scaffolded in `worker/`.

@@ -10,9 +10,10 @@ import {
   type ModelAssumptionsInput,
 } from '../engine/index.ts';
 import { validateModel, type ValidationReport } from '../validation/index.ts';
+import { buildReadme } from '../export/index.ts';
 import { PRESETS, type Preset } from '../templates/index.ts';
 import { Button, Field, NumberInput, Section, Stat, StatusPill, TextInput } from './components.tsx';
-import { downloadBytes, money, mult, pct, price, slug } from './lib.ts';
+import { downloadBytes, downloadText, money, mult, pct, price, slug } from './lib.ts';
 
 interface FormState {
   company: string;
@@ -192,6 +193,8 @@ interface Generated {
   report: ValidationReport;
   bytes: Uint8Array;
   filename: string;
+  readme: string;
+  readmeFilename: string;
 }
 
 export default function Builder() {
@@ -230,10 +233,22 @@ export default function Builder() {
       const dcfA = DCFAssumptionsSchema.parse(dcf);
       const dcfRes = computeDCF(model, dcfA);
       const report = validateModel(model, a, dcfRes);
+      const base = `ProForma_${slug(a.meta.company)}`;
+      const readme = buildReadme(model, a, dcfRes, report, {
+        generatedOn: new Date().toLocaleDateString('en-US'),
+      });
       // Lazy-load the Excel writer (ExcelJS) so it stays out of the initial bundle.
       const { buildWorkbook } = await import('../excel/index.ts');
       const bytes = await buildWorkbook(model, a, dcfA);
-      setResult({ model, dcf: dcfRes, report, bytes, filename: `ProForma_${slug(a.meta.company)}.xlsx` });
+      setResult({
+        model,
+        dcf: dcfRes,
+        report,
+        bytes,
+        filename: `${base}.xlsx`,
+        readme,
+        readmeFilename: `${base}_README.md`,
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setResult(null);
@@ -408,11 +423,16 @@ export default function Builder() {
         <span className="text-xs text-muted">
           Runs entirely in your browser — no data leaves your device. Not investment advice.
         </span>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           {result && (
-            <Button variant="ghost" onClick={() => downloadBytes(result.bytes, result.filename)}>
-              Download .xlsx
-            </Button>
+            <>
+              <Button variant="ghost" onClick={() => downloadText(result.readme, result.readmeFilename)}>
+                Download README
+              </Button>
+              <Button variant="ghost" onClick={() => downloadBytes(result.bytes, result.filename)}>
+                Download .xlsx
+              </Button>
+            </>
           )}
           <Button onClick={generate} disabled={busy}>
             {busy ? 'Generating…' : result ? 'Regenerate' : 'Generate model'}

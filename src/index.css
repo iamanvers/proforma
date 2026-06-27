@@ -36,17 +36,88 @@ html {
 
 body {
   margin: 0;
-  background:
-    radial-gradient(60rem 28rem at 50% -8rem, rgba(23, 99, 163, 0.1), transparent 70%),
-    var(--color-canvas);
-  background-attachment: fixed;
+  background-color: var(--color-canvas);
   color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
+/* ── Light aurora ───────────────────────────────────────────────────────────
+   Soft, slow-drifting Citi-blue radial blobs on the light canvas. Sits in a
+   fixed, non-interactive layer behind the content; low opacity so text stays
+   perfectly readable. */
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.aurora::before,
+.aurora::after,
+.aurora > span {
+  content: '';
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(120px);
+  will-change: transform;
+}
+
+/* top-left, light Citi blue */
+.aurora::before {
+  width: 44rem;
+  height: 44rem;
+  top: -16rem;
+  left: -12rem;
+  background: radial-gradient(circle at center, rgba(79, 156, 212, 0.55) 0%, rgba(79, 156, 212, 0) 70%);
+  opacity: 0.55;
+  animation: aurora-drift-a 24s ease-in-out infinite alternate;
+}
+
+/* right, deeper Citi blue */
+.aurora::after {
+  width: 38rem;
+  height: 38rem;
+  top: -8rem;
+  right: -14rem;
+  background: radial-gradient(circle at center, rgba(42, 125, 192, 0.4) 0%, rgba(42, 125, 192, 0) 70%);
+  opacity: 0.5;
+  animation: aurora-drift-b 28s ease-in-out infinite alternate;
+}
+
+/* lower-centre wash, palest blue */
+.aurora > span {
+  width: 52rem;
+  height: 32rem;
+  bottom: -20rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: radial-gradient(circle at center, rgba(132, 189, 228, 0.5) 0%, rgba(132, 189, 228, 0) 72%);
+  opacity: 0.5;
+  animation: aurora-drift-c 32s ease-in-out infinite alternate;
+}
+
+@keyframes aurora-drift-a {
+  from { transform: translate(0, 0) scale(1); }
+  to { transform: translate(5rem, 3rem) scale(1.12); }
+}
+@keyframes aurora-drift-b {
+  from { transform: translate(0, 0) scale(1); }
+  to { transform: translate(-4rem, 4rem) scale(1.08); }
+}
+@keyframes aurora-drift-c {
+  from { transform: translateX(-50%) scale(1); }
+  to { transform: translateX(-46%) scale(1.15); }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .aurora::before,
+  .aurora::after,
+  .aurora > span {
+    animation: none;
+  }
   html {
     scroll-behavior: auto;
   }
