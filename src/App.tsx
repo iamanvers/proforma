@@ -1,9 +1,9 @@
-import Builder from './ui/Builder.tsx';
+import Chat from './ui/Chat.tsx';
 
 const features = [
   {
     title: 'Deterministic engine',
-    body: 'A pure TypeScript engine builds and links the 3-statement model and DCF. The LLM never does the math — the model generates with zero AI calls.',
+    body: 'A pure TypeScript engine builds and links the 3-statement model and DCF. The AI only converses and suggests assumptions — it never does the math.',
   },
   {
     title: 'Validation, first-class',
@@ -18,107 +18,111 @@ const features = [
 function Logo() {
   return (
     <div className="flex items-baseline gap-2.5">
-      <span className="font-display text-xl tracking-tight text-citi-900">
-        Pro<span className="text-citi-600">Forma</span>
+      <span className="text-xl font-semibold tracking-tight text-white">
+        Pro<span className="text-citi-400">Forma</span>
       </span>
-      <span className="hidden text-sm text-muted sm:inline">financial models, straight to Excel</span>
+      <span className="hidden text-sm text-muted sm:inline">validated models, straight to Excel</span>
     </div>
   );
 }
 
 export default function App() {
   return (
-    <div className="relative min-h-dvh">
+    <div className="relative min-h-dvh overflow-hidden">
       <div className="aurora" aria-hidden="true">
         <span />
       </div>
+      <div className="grid-veil" aria-hidden="true" />
 
       <div className="relative z-10">
-      {/* Nav */}
-      <header className="sticky top-0 z-30 border-b border-line bg-white/70 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <Logo />
-          <nav className="flex items-center gap-6 text-sm text-citi-900">
-            <a href="#how" className="hidden transition-colors hover:text-citi-600 sm:inline">
-              How it works
-            </a>
-            <a
-              href="#build"
-              className="rounded-full bg-citi-700 px-4 py-1.5 font-medium text-white transition-colors hover:bg-citi-800"
-            >
-              Build a model
-            </a>
-          </nav>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-6xl px-6">
-        {/* Hero */}
-        <section className="pt-16 pb-12 text-center sm:pt-20">
-          <span className="inline-flex items-center gap-2 rounded-full border border-citi-200 bg-citi-50 px-4 py-1.5 text-xs font-medium text-citi-800">
-            <span className="size-1.5 rounded-full bg-citi-500" />
-            Deterministic engine · the LLM never does the math
-          </span>
-
-          <h1 className="font-display mx-auto mt-6 max-w-3xl text-4xl leading-[1.12] tracking-tight text-citi-950 sm:text-5xl">
-            Validated IB/PE models, straight to a live Excel workbook.
-          </h1>
-
-          <p className="mx-auto mt-5 max-w-2xl text-lg leading-relaxed text-muted">
-            ProForma turns a few assumptions into an integrated 3-statement model and DCF, proves that it
-            ties out, and exports a real <code className="rounded bg-citi-50 px-1 text-citi-800">.xlsx</code>{' '}
-            with working formulas — all in your browser.
-          </p>
-
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-            <a
-              href="#build"
-              className="rounded-full bg-citi-700 px-6 py-3 font-medium text-white shadow-sm transition-transform hover:scale-[1.02]"
-            >
-              Build a model
-            </a>
-            <a
-              href="#how"
-              className="rounded-full border border-citi-200 bg-white px-6 py-3 font-medium text-citi-800 transition-colors hover:bg-citi-50"
-            >
-              How it works
-            </a>
+        <header className="sticky top-0 z-30 border-b border-line bg-canvas/70 backdrop-blur-xl">
+          <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+            <Logo />
+            <nav className="flex items-center gap-6 text-sm text-muted">
+              <a href="#how" className="hidden transition-colors hover:text-white sm:inline">
+                How it works
+              </a>
+              <a
+                href="#build"
+                className="rounded-full border border-citi-400/40 bg-citi-500/10 px-4 py-1.5 font-medium text-citi-200 transition-colors hover:bg-citi-500/20"
+              >
+                Build a model
+              </a>
+            </nav>
           </div>
-        </section>
+        </header>
 
-        {/* Features */}
-        <section id="how" className="scroll-mt-20">
-          <div className="grid gap-4 md:grid-cols-3">
-            {features.map((f) => (
-              <article key={f.title} className="rounded-2xl border border-line bg-white p-6 shadow-sm">
-                <h3 className="font-display text-lg text-citi-900">{f.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-muted">{f.body}</p>
-              </article>
-            ))}
-          </div>
-        </section>
+        <main className="mx-auto max-w-6xl px-6">
+          {/* Hero */}
+          <section className="pt-16 pb-10 text-center sm:pt-24">
+            <span className="inline-flex items-center gap-2 rounded-full border border-line bg-white/5 px-4 py-1.5 text-xs text-muted backdrop-blur">
+              <span className="size-1.5 rounded-full bg-citi-400 shadow-[0_0_10px_2px] shadow-citi-400/60" />
+              Deterministic engine · the AI never does the math
+            </span>
 
-        {/* Builder */}
-        <section id="build" className="scroll-mt-20 py-14">
-          <div className="mb-6">
-            <h2 className="font-display text-3xl tracking-tight text-citi-950">Build your model</h2>
-            <p className="mt-2 max-w-2xl text-muted">
-              Pick a template, adjust the drivers, and generate. The engine links the statements, solves the
-              revolver circularity, validates the result, and hands you a live workbook.
+            <h1 className="mx-auto mt-7 max-w-4xl text-4xl font-semibold leading-[1.08] tracking-tight text-white sm:text-6xl">
+              Describe a company.
+              <br className="hidden sm:block" />{' '}
+              <span className="bg-gradient-to-r from-citi-300 via-citi-400 to-citi-200 bg-clip-text text-transparent">
+                Get a validated model in Excel.
+              </span>
+            </h1>
+
+            <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-muted">
+              ProForma’s assistant turns a plain-English brief into an integrated 3-statement model and
+              DCF, proves that it ties out, and exports a live{' '}
+              <code className="rounded bg-white/5 px-1 text-citi-200">.xlsx</code> with working formulas —
+              all in your browser.
             </p>
-          </div>
-          <Builder />
-        </section>
-      </main>
 
-      <footer className="border-t border-line bg-white">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-6 py-8 text-sm text-muted sm:flex-row">
-          <span className="font-display text-citi-900">
-            Pro<span className="text-citi-600">Forma</span> · MIT licensed
-          </span>
-          <span>Not investment advice · no proprietary templates or book content.</span>
-        </div>
-      </footer>
+            <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
+              <a
+                href="#build"
+                className="rounded-full bg-citi-500 px-6 py-3 font-medium text-white shadow-[0_0_30px_-4px] shadow-citi-500/60 transition-transform hover:scale-[1.02]"
+              >
+                Start building
+              </a>
+              <a
+                href="#how"
+                className="rounded-full border border-line bg-white/5 px-6 py-3 font-medium text-ink backdrop-blur transition-colors hover:bg-white/10"
+              >
+                How it works
+              </a>
+            </div>
+          </section>
+
+          {/* Builder (chat) */}
+          <section id="build" className="scroll-mt-20 py-8">
+            <Chat />
+          </section>
+
+          {/* Features */}
+          <section id="how" className="scroll-mt-20 py-16">
+            <h2 className="text-center text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+              From a brief to a workbook that ties out
+            </h2>
+            <div className="mt-10 grid gap-4 md:grid-cols-3">
+              {features.map((f) => (
+                <article
+                  key={f.title}
+                  className="rounded-2xl border border-line bg-glass p-6 backdrop-blur-xl transition-colors hover:border-citi-400/30"
+                >
+                  <h3 className="text-lg font-semibold text-white">{f.title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-muted">{f.body}</p>
+                </article>
+              ))}
+            </div>
+          </section>
+        </main>
+
+        <footer className="border-t border-line">
+          <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-6 py-8 text-sm text-muted sm:flex-row">
+            <span className="text-white/90">
+              Pro<span className="text-citi-400">Forma</span> · MIT licensed
+            </span>
+            <span>Not investment advice · no proprietary templates or book content.</span>
+          </div>
+        </footer>
       </div>
     </div>
   );
