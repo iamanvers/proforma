@@ -30,6 +30,7 @@ export const COLORS = {
 /** Tab colors, so the workbook reads at a glance (inputs vs. outputs vs. checks). */
 export const TAB_COLORS = {
   cover: 'FF1F3864',
+  dashboard: 'FF0B3D91',
   assumptions: 'FF2E5FAC',
   statement: 'FF595959',
   wc: 'FF0F6F6F',

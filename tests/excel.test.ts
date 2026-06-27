@@ -52,6 +52,7 @@ describe('Excel export — structure', () => {
   it('contains the expected bank-style tabs in order', () => {
     expect(wb.worksheets.map((w) => w.name)).toEqual([
       'Cover',
+      'Dashboard',
       'Assumptions',
       'Income Statement',
       'Balance Sheet',
@@ -150,6 +151,28 @@ describe('Excel export — cached results equal the engine', () => {
       if (Math.abs(expected) < 1e-9) continue;
       expect(cached(debt, termEnd, periodCol(t))).toBeCloseTo(expected, 3);
     }
+  });
+
+  it('dashboard: headline enterprise value links to the engine value', () => {
+    const dash = wb.getWorksheet('Dashboard')!;
+    const evRow = findRow(dash, (l) => l === 'Enterprise value');
+    expect(cached(dash, evRow, 2)).toBeCloseTo(dcf.enterpriseValue, 2);
+  });
+
+  it('dashboard: sensitivity grid centre cell equals the base enterprise value', () => {
+    const dash = wb.getWorksheet('Dashboard')!;
+    // The base case sits at the centre of the 5×5 grid; its EV equals the DCF EV.
+    // Locate the sensitivity block by its section header, then read the centre.
+    let headerRow = -1;
+    dash.eachRow((row, n) => {
+      const v = row.getCell(1).value;
+      if (typeof v === 'string' && v.startsWith('Sensitivity —')) headerRow = n;
+    });
+    expect(headerRow).toBeGreaterThan(0);
+    const gridTop = headerRow + 1; // column-header row
+    const centre = cached(dash, gridTop + 3, 5) as number; // 3rd wacc row, 3rd terminal col
+    const expected = dcf.sharesOutstanding > 0 ? dcf.equityValuePerShare : dcf.enterpriseValue;
+    expect(centre).toBeCloseTo(expected, 2);
   });
 
   it('DCF: enterprise value and WACC match the engine', () => {

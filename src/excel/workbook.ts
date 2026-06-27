@@ -1,10 +1,11 @@
 import ExcelJS from 'exceljs';
 import type { BalanceSheet, IncomeStatement, Model } from '../engine/types.ts';
 import type { ModelAssumptions } from '../engine/schema.ts';
-import { computeDCF, type DCFAssumptions, type DCFResult } from '../engine/dcf.ts';
+import { buildSensitivity, computeDCF, type DCFAssumptions, type DCFResult } from '../engine/dcf.ts';
 import { injectIterativeCalc } from './calcPr.ts';
-import { Layout, periodCol, periodColLetter } from './cells.ts';
+import { colLetter, Layout, periodCol, periodColLetter } from './cells.ts';
 import {
+  COLORS,
   FMT,
   FONT,
   noteFont,
@@ -19,6 +20,7 @@ import {
 
 const SHEET = {
   cover: 'Cover',
+  dashboard: 'Dashboard',
   assumptions: 'Assumptions',
   is: 'Income Statement',
   bs: 'Balance Sheet',
@@ -177,8 +179,12 @@ export async function buildWorkbook(
     t === 0 ? model.opening[key] : model.periods[t - 1]!.balance[key];
   const cf = (t: number) => model.periods[t - 1]!.cashFlow;
 
-  // ════════════════ Cover (created first for tab order; populated last) ═══════
+  // ════════════════ Cover + Dashboard (created up front for tab order) ════════
+  // CFI prefers an outputs-first presentation: Cover → Dashboard → inputs → … .
   const coverSheet = addSheet(SHEET.cover, { freeze: false, tab: TAB_COLORS.cover });
+  const dashSheet = dcf
+    ? addSheet(SHEET.dashboard, { freeze: false, tab: TAB_COLORS.dashboard })
+    : undefined;
 
   // ════════════════ Assumptions ══════════════════════════════════════════════
   {
@@ -682,7 +688,10 @@ export async function buildWorkbook(
   writeChecks(addSheet(SHEET.checks, { tab: TAB_COLORS.checks }), wb, layout, model, dcf, N);
   const checkCount = N * 2 + (dcf ? 1 : 0);
 
-  // ════════════════ Cover (populated now that every sheet exists) ═════════════
+  // ════════════════ Dashboard + Cover (populated now every sheet exists) ══════
+  if (dashSheet && dcf && dcfAssumptions) {
+    writeDashboard(dashSheet, wb, layout, dcfAssumptions, model, dcf, N);
+  }
   writeCover(coverSheet, wb, model, !!dcf, checkCount);
 
   const buffer = await wb.xlsx.writeBuffer();
@@ -814,6 +823,125 @@ function writeDCF(
   const ndRow = put('Less: net debt', 'open_revolver+open_termloan-open_cash', dcf.netDebt, FMT.currency);
   const eqRow = put('Equity value', `B${evRow}-B${ndRow}`, dcf.equityValue, FMT.currency, true);
   put('Equity value per share', `IF(shares>0,B${eqRow}/shares,0)`, dcf.equityValuePerShare, FMT.price, true);
+}
+
+// ── Dashboard sheet ──────────────────────────────────────────────────────────
+// Outputs first (CFI "design backward"): headline valuation, key operating
+// figures, and a LIVE two-way WACC × terminal sensitivity grid that recomputes
+// off the DCF sheet's unlevered-FCF stream.
+function writeDashboard(
+  sheet: ExcelJS.Worksheet,
+  wb: ExcelJS.Workbook,
+  layout: Layout,
+  a: DCFAssumptions,
+  model: Model,
+  dcf: DCFResult,
+  N: number,
+): void {
+  sheet.getColumn(1).width = 34;
+  for (let c = 2; c <= 9; c++) sheet.getColumn(c).width = 13;
+  sheet.mergeCells(TITLE_ROW, 1, TITLE_ROW, 9);
+  const title = sheet.getCell(TITLE_ROW, 1);
+  title.value = `${model.meta.company} — Dashboard`;
+  styleHeaderCell(title, { center: true });
+  sheet.getCell(UNITS_ROW, 1).value = `${model.meta.currency} in ${model.meta.units} unless noted`;
+  sheet.getCell(UNITS_ROW, 1).font = { ...NOTE_FONT };
+
+  const dcfRow = (label: string) => findDcfRow(wb, label);
+  const section = (row: number, text: string): void => {
+    sheet.mergeCells(row, 1, row, 9);
+    const c = sheet.getCell(row, 1);
+    c.value = text;
+    styleSection(c);
+  };
+  const link = (row: number, label: string, target: string, result: number, fmt: string, bold = false): void => {
+    sheet.getCell(row, 1).value = label;
+    styleLabel(sheet.getCell(row, 1), { bold, indent: bold ? 0 : 1 });
+    const cell = sheet.getCell(row, 2);
+    cell.value = { formula: target, result };
+    styleValue(cell, 'link', fmt, { bold });
+  };
+
+  let r = 4;
+  section(r++, 'Valuation summary');
+  link(r++, 'Enterprise value', `'${SHEET.dcf}'!B${dcfRow('Enterprise value')}`, dcf.enterpriseValue, FMT.currency, true);
+  link(r++, 'Less: net debt', `'${SHEET.dcf}'!B${dcfRow('Less: net debt')}`, dcf.netDebt, FMT.currency);
+  link(r++, 'Equity value', `'${SHEET.dcf}'!B${dcfRow('Equity value')}`, dcf.equityValue, FMT.currency, true);
+  if (dcf.sharesOutstanding > 0) {
+    link(r++, 'Equity value per share', `'${SHEET.dcf}'!B${dcfRow('Equity value per share')}`, dcf.equityValuePerShare, FMT.price, true);
+  }
+  link(r++, 'WACC', `'${SHEET.dcf}'!B${dcfRow('WACC')}`, dcf.wacc, FMT.percent);
+  {
+    const row = r++;
+    sheet.getCell(row, 1).value = 'Terminal value % of EV';
+    styleLabel(sheet.getCell(row, 1), { indent: 1 });
+    const cell = sheet.getCell(row, 2);
+    cell.value = {
+      formula: `'${SHEET.dcf}'!B${dcfRow('PV of terminal value')}/'${SHEET.dcf}'!B${dcfRow('Enterprise value')}`,
+      result: dcf.terminalValuePctOfEV,
+    };
+    styleValue(cell, 'formula', FMT.percent);
+  }
+
+  r++;
+  section(r++, 'Operating outputs (final year)');
+  const lastLabel = model.periods[N - 1]?.label ?? `Year ${N}`;
+  const p = model.periods[N - 1]!;
+  link(r++, `Revenue — ${lastLabel}`, layout.ref(SHEET.is, 'revenue', N), p.income.revenue, FMT.currency);
+  link(r++, `EBITDA — ${lastLabel}`, layout.ref(SHEET.is, 'ebitda', N), p.income.ebitda, FMT.currency);
+  link(r++, `Net income — ${lastLabel}`, layout.ref(SHEET.is, 'netIncome', N), p.income.netIncome, FMT.currency);
+  link(r++, `Free cash flow — ${lastLabel}`, `${layout.ref(SHEET.cf, 'cfo', N)}+${layout.ref(SHEET.cf, 'cfi', N)}`, p.cashFlow.cfo + p.cashFlow.cfi, FMT.currency);
+
+  // ── Live two-way sensitivity: WACC (rows) × terminal parameter (cols) ───────
+  r++;
+  const sens = buildSensitivity(model, a);
+  const isPerp = a.terminalMethod === 'perpetuity';
+  const perShare = dcf.sharesOutstanding > 0;
+  const metricFmt = perShare ? FMT.price : FMT.currency;
+  section(r++, `Sensitivity — ${perShare ? 'equity value / share' : 'enterprise value'} (WACC × ${isPerp ? 'terminal growth' : 'exit multiple'})`);
+
+  const ufcfRow = dcfRow('Unlevered free cash flow');
+  const tRow = dcfRow('Discount period (t)');
+  const pc1 = periodColLetter(1);
+  const pcN = periodColLetter(N);
+  const ebitdaN = layout.ref(SHEET.is, 'ebitda', N);
+
+  const gridTop = r;
+  const corner = sheet.getCell(gridTop, 2);
+  corner.value = isPerp ? 'WACC \\ g' : 'WACC \\ x';
+  corner.font = { name: FONT, size: 9, italic: true };
+  corner.alignment = { horizontal: 'center' };
+  sens.colAxis.values.forEach((tv, j) => {
+    const cell = sheet.getCell(gridTop, 3 + j);
+    cell.value = tv;
+    styleValue(cell, 'input', isPerp ? FMT.percent : FMT.multiple, { bold: true });
+    cell.alignment = { horizontal: 'center' };
+  });
+
+  const midI = (sens.rowAxis.values.length - 1) / 2;
+  const midJ = (sens.colAxis.values.length - 1) / 2;
+  sens.rowAxis.values.forEach((w, i) => {
+    const rowN = gridTop + 1 + i;
+    const wcell = sheet.getCell(rowN, 2);
+    wcell.value = w;
+    styleValue(wcell, 'input', FMT.percent, { bold: true });
+    const waccAddr = `B${rowN}`;
+    sens.colAxis.values.forEach((_tv, j) => {
+      const colN = 3 + j;
+      const termAddr = `${colLetter(colN)}${gridTop}`;
+      const pv = `SUMPRODUCT('${SHEET.dcf}'!${pc1}${ufcfRow}:${pcN}${ufcfRow},1/(1+${waccAddr})^'${SHEET.dcf}'!${pc1}${tRow}:${pcN}${tRow})`;
+      const tvExpr = isPerp
+        ? `'${SHEET.dcf}'!${pcN}${ufcfRow}*(1+${termAddr})/(${waccAddr}-${termAddr})/(1+${waccAddr})^'${SHEET.dcf}'!${pcN}${tRow}`
+        : `${ebitdaN}*${termAddr}/(1+${waccAddr})^${N}`;
+      const ev = `(${pv}+${tvExpr})`;
+      const metric = perShare ? `(${ev}-(open_revolver+open_termloan-open_cash))/shares` : ev;
+      const cell = sheet.getCell(rowN, colN);
+      cell.value = { formula: metric, result: sens.grid[i]![j]! };
+      const isBase = i === midI && j === midJ;
+      styleValue(cell, 'formula', metricFmt, { bold: isBase });
+      if (isBase) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.subtotalBg } };
+    });
+  });
 }
 
 // ── Checks sheet ─────────────────────────────────────────────────────────────
