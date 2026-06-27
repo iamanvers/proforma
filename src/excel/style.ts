@@ -32,23 +32,28 @@ export const TAB_COLORS = {
   cover: 'FF1F3864',
   assumptions: 'FF2E5FAC',
   statement: 'FF595959',
+  wc: 'FF0F6F6F',
+  ppe: 'FF7A6A1F',
+  debt: 'FF8B2F4A',
   ratios: 'FF6B46C1',
   dcf: 'FF2E7D32',
   checks: 'FFB7791F',
 } as const;
 
 /**
- * Number formats. `_)` reserves a parenthesis-width space so positive and
- * negative values align on the decimal — the accountant look.
+ * Number formats. Three sections (positive;negative;zero) follow CFI's
+ * convention: `_)` reserves a parenthesis-width space so values align on the
+ * decimal (the accountant look), negatives use brackets, and **zeroes render
+ * as a dash** so they read cleanly and are easy to spot.
  */
 export const FMT = {
-  currency: '#,##0.0_);(#,##0.0)',
-  currency0: '#,##0_);(#,##0)',
-  percent: '0.0%_);(0.0%)',
-  percent2: '0.00%_);(0.00%)',
-  multiple: '#,##0.0"x"',
-  days: '#,##0',
-  price: '#,##0.00_);(#,##0.00)',
+  currency: '#,##0.0_);(#,##0.0);"-"_)',
+  currency0: '#,##0_);(#,##0);"-"_)',
+  percent: '0.0%_);(0.0%);"-"_)',
+  percent2: '0.00%_);(0.00%);"-"_)',
+  multiple: '#,##0.0"x";(#,##0.0"x");"-"',
+  days: '#,##0;(#,##0);"-"',
+  price: '#,##0.00_);(#,##0.00);"-"_)',
   shares: '#,##0.0',
   factor: '0.000',
 } as const;

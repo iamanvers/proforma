@@ -56,6 +56,9 @@ describe('Excel export — structure', () => {
       'Income Statement',
       'Balance Sheet',
       'Cash Flow',
+      'Working Capital',
+      'PP&E & Depreciation',
+      'Debt',
       'Ratios',
       'DCF',
       'Checks',
@@ -114,6 +117,38 @@ describe('Excel export — cached results equal the engine', () => {
     for (let t = 1; t <= N(); t++) {
       const p = model.periods[t - 1]!;
       expect(cached(r, row, periodCol(t))).toBeCloseTo(p.income.ebitda / p.income.revenue, 6);
+    }
+  });
+
+  it('ratios: DuPont ROE reconciles to the direct ROE every period', () => {
+    const r = wb.getWorksheet('Ratios')!;
+    const row = findRow(r, (l) => l === '= Return on equity (DuPont)');
+    for (let t = 1; t <= N(); t++) {
+      const p = model.periods[t - 1]!;
+      expect(cached(r, row, periodCol(t))).toBeCloseTo(p.income.netIncome / p.balance.totalEquity, 6);
+    }
+  });
+
+  it('PP&E schedule: ending gross PP&E ties to the balance sheet', () => {
+    const ppe = wb.getWorksheet('PP&E & Depreciation')!;
+    const netRow = findRow(ppe, (l) => l === 'Net PP&E');
+    for (let t = 1; t <= N(); t++) {
+      expect(cached(ppe, netRow, periodCol(t))).toBeCloseTo(model.periods[t - 1]!.balance.netPPE, 3);
+    }
+  });
+
+  it('debt schedule: term-loan ending balance ties to the balance sheet', () => {
+    const debt = wb.getWorksheet('Debt')!;
+    // The term loan's "Ending balance" is the first occurrence; capture it explicitly.
+    let termEnd = -1;
+    debt.eachRow((rowObj, n) => {
+      if (termEnd < 0 && rowObj.getCell(1).value === 'Ending balance') termEnd = n;
+    });
+    for (let t = 1; t <= N(); t++) {
+      const expected = model.periods[t - 1]!.balance.termLoan;
+      // Skip exact-zero periods: ExcelJS omits the cached <v> for a 0 result.
+      if (Math.abs(expected) < 1e-9) continue;
+      expect(cached(debt, termEnd, periodCol(t))).toBeCloseTo(expected, 3);
     }
   });
 

@@ -23,6 +23,9 @@ const SHEET = {
   is: 'Income Statement',
   bs: 'Balance Sheet',
   cf: 'Cash Flow',
+  wc: 'Working Capital',
+  ppe: 'PP&E & Depreciation',
+  debt: 'Debt',
   ratios: 'Ratios',
   dcf: 'DCF',
   checks: 'Checks',
@@ -174,8 +177,8 @@ export async function buildWorkbook(
     t === 0 ? model.opening[key] : model.periods[t - 1]!.balance[key];
   const cf = (t: number) => model.periods[t - 1]!.cashFlow;
 
-  // ════════════════ Cover (first, so the workbook opens contents-first) ═══════
-  writeCover(addSheet(SHEET.cover, { freeze: false, tab: TAB_COLORS.cover }), model, !!dcf);
+  // ════════════════ Cover (created first for tab order; populated last) ═══════
+  const coverSheet = addSheet(SHEET.cover, { freeze: false, tab: TAB_COLORS.cover });
 
   // ════════════════ Assumptions ══════════════════════════════════════════════
   {
@@ -412,80 +415,262 @@ export async function buildWorkbook(
     writeBalanceSubtotals(t);
   }
 
+  // ════════════════ Supporting schedules (CFI building blocks) ════════════════
+  // Each schedule is a self-contained block (enter → calculate → exit) whose
+  // results equal the statements and tie back via live links — so the model is
+  // transparent and auditable, per the CFI Financial Modeling Guidelines.
+  const wcRef = (k: string, t: number) => layout.ref(SHEET.wc, k, t);
+  const ppeRef = (k: string, t: number) => layout.ref(SHEET.ppe, k, t);
+  const debtRef = (k: string, t: number) => layout.ref(SHEET.debt, k, t);
+
+  // ── Working-capital schedule ───────────────────────────────────────────────
+  addSheet(SHEET.wc, { tab: TAB_COLORS.wc });
+  writeChrome(SHEET.wc, true);
+  layoutStatement(SHEET.wc, [
+    { kind: 'section', label: 'Drivers (enter)' },
+    { key: 'revenue', label: 'Revenue', kind: 'line' },
+    { key: 'cogs', label: 'Cost of goods sold', kind: 'line' },
+    { kind: 'section', label: 'Days assumptions' },
+    { key: 'dso', label: 'Accounts receivable (days)', kind: 'line' },
+    { key: 'dio', label: 'Inventory (days)', kind: 'line' },
+    { key: 'dpo', label: 'Accounts payable (days)', kind: 'line' },
+    { kind: 'section', label: 'Balances (calculate)' },
+    { key: 'ar', label: 'Accounts receivable', kind: 'line' },
+    { key: 'inv', label: 'Inventory', kind: 'line' },
+    { key: 'ap', label: 'Accounts payable', kind: 'line' },
+    { kind: 'section', label: 'Net working capital (exit)' },
+    { key: 'nwc', label: 'Net working capital', kind: 'subtotal' },
+    { key: 'cashWC', label: 'Cash from working-capital items', kind: 'total' },
+  ]);
+  // Opening column: operating balances link to the opening balance sheet.
+  formula(SHEET.wc, 'ar', 0, layout.ref(SHEET.bs, 'accountsReceivable', 0), bsVal('accountsReceivable', 0), 'link', FMT.currency);
+  formula(SHEET.wc, 'inv', 0, layout.ref(SHEET.bs, 'inventory', 0), bsVal('inventory', 0), 'link', FMT.currency);
+  formula(SHEET.wc, 'ap', 0, layout.ref(SHEET.bs, 'accountsPayable', 0), bsVal('accountsPayable', 0), 'link', FMT.currency);
+  formula(SHEET.wc, 'nwc', 0, `${wcRef('ar', 0)}+${wcRef('inv', 0)}-${wcRef('ap', 0)}`, bsVal('accountsReceivable', 0) + bsVal('inventory', 0) - bsVal('accountsPayable', 0), 'formula', FMT.currency, { bold: true, topBorder: true });
+  for (let t = 1; t <= N; t++) {
+    formula(SHEET.wc, 'revenue', t, layout.ref(SHEET.is, 'revenue', t), isVal('revenue', t), 'link', FMT.currency);
+    formula(SHEET.wc, 'cogs', t, layout.ref(SHEET.is, 'cogs', t), isVal('cogs', t), 'link', FMT.currency);
+    formula(SHEET.wc, 'dso', t, 'dso', assumptions.drivers.dso, 'formula', FMT.days);
+    formula(SHEET.wc, 'dio', t, 'dio', assumptions.drivers.dio, 'formula', FMT.days);
+    formula(SHEET.wc, 'dpo', t, 'dpo', assumptions.drivers.dpo, 'formula', FMT.days);
+    formula(SHEET.wc, 'ar', t, `${wcRef('revenue', t)}*dso/365`, bsVal('accountsReceivable', t), 'formula', FMT.currency);
+    formula(SHEET.wc, 'inv', t, `${wcRef('cogs', t)}*dio/365`, bsVal('inventory', t), 'formula', FMT.currency);
+    formula(SHEET.wc, 'ap', t, `${wcRef('cogs', t)}*dpo/365`, bsVal('accountsPayable', t), 'formula', FMT.currency);
+    formula(SHEET.wc, 'nwc', t, `${wcRef('ar', t)}+${wcRef('inv', t)}-${wcRef('ap', t)}`, bsVal('accountsReceivable', t) + bsVal('inventory', t) - bsVal('accountsPayable', t), 'formula', FMT.currency, { bold: true, topBorder: true });
+    formula(SHEET.wc, 'cashWC', t, `-(${wcRef('nwc', t)}-${wcRef('nwc', t - 1)})`, -cf(t).changeInAR - cf(t).changeInInventory + cf(t).changeInAP, 'formula', FMT.currency, { bold: true, topBorder: true, doubleBottom: true });
+  }
+
+  // ── PP&E & depreciation roll-forwards (corkscrews) ─────────────────────────
+  addSheet(SHEET.ppe, { tab: TAB_COLORS.ppe });
+  writeChrome(SHEET.ppe, true);
+  layoutStatement(SHEET.ppe, [
+    { kind: 'section', label: 'Capital expenditure' },
+    { key: 'capex', label: 'Capital expenditure', kind: 'line' },
+    { kind: 'section', label: 'Gross PP&E (roll-forward)' },
+    { key: 'beginGross', label: 'Beginning balance', kind: 'line' },
+    { key: 'addCapex', label: '(+) Capital expenditure', kind: 'line' },
+    { key: 'endGross', label: 'Ending balance', kind: 'subtotal' },
+    { kind: 'section', label: 'Accumulated depreciation (roll-forward)' },
+    { key: 'beginAccum', label: 'Beginning balance', kind: 'line' },
+    { key: 'depr', label: '(+) Depreciation', kind: 'line' },
+    { key: 'endAccum', label: 'Ending balance', kind: 'subtotal' },
+    { kind: 'section', label: 'Net PP&E (exit)' },
+    { key: 'netPPE', label: 'Net PP&E', kind: 'total' },
+  ]);
+  formula(SHEET.ppe, 'endGross', 0, layout.ref(SHEET.bs, 'grossPPE', 0), bsVal('grossPPE', 0), 'link', FMT.currency, { bold: true, topBorder: true });
+  formula(SHEET.ppe, 'endAccum', 0, layout.ref(SHEET.bs, 'accumulatedDepreciation', 0), bsVal('accumulatedDepreciation', 0), 'link', FMT.currency, { bold: true, topBorder: true });
+  formula(SHEET.ppe, 'netPPE', 0, `${ppeRef('endGross', 0)}-${ppeRef('endAccum', 0)}`, bsVal('netPPE', 0), 'formula', FMT.currency, { bold: true, topBorder: true, doubleBottom: true });
+  for (let t = 1; t <= N; t++) {
+    formula(SHEET.ppe, 'capex', t, `-${layout.ref(SHEET.cf, 'capex', t)}`, cf(t).capex, 'link', FMT.currency);
+    formula(SHEET.ppe, 'beginGross', t, ppeRef('endGross', t - 1), bsVal('grossPPE', t - 1), 'formula', FMT.currency);
+    formula(SHEET.ppe, 'addCapex', t, ppeRef('capex', t), cf(t).capex, 'formula', FMT.currency);
+    formula(SHEET.ppe, 'endGross', t, `${ppeRef('beginGross', t)}+${ppeRef('addCapex', t)}`, bsVal('grossPPE', t), 'formula', FMT.currency, { bold: true, topBorder: true });
+    formula(SHEET.ppe, 'beginAccum', t, ppeRef('endAccum', t - 1), bsVal('accumulatedDepreciation', t - 1), 'formula', FMT.currency);
+    formula(SHEET.ppe, 'depr', t, layout.ref(SHEET.is, 'depreciation', t), isVal('depreciation', t), 'link', FMT.currency);
+    formula(SHEET.ppe, 'endAccum', t, `${ppeRef('beginAccum', t)}+${ppeRef('depr', t)}`, bsVal('accumulatedDepreciation', t), 'formula', FMT.currency, { bold: true, topBorder: true });
+    formula(SHEET.ppe, 'netPPE', t, `${ppeRef('endGross', t)}-${ppeRef('endAccum', t)}`, bsVal('netPPE', t), 'formula', FMT.currency, { bold: true, topBorder: true, doubleBottom: true });
+  }
+
+  // ── Debt schedule: term-loan + revolver roll-forwards ──────────────────────
+  // The revolver block prints its precedents (cash available before the revolver)
+  // so the plug is fully transparent, per CFI Positioning Precedents (Fig 51).
+  addSheet(SHEET.debt, { tab: TAB_COLORS.debt });
+  writeChrome(SHEET.debt, true);
+  layoutStatement(SHEET.debt, [
+    { kind: 'section', label: 'Term loan (roll-forward)' },
+    { key: 'beginTL', label: 'Beginning balance', kind: 'line' },
+    { key: 'amortTL', label: '(−) Mandatory amortization', kind: 'line' },
+    { key: 'endTL', label: 'Ending balance', kind: 'subtotal' },
+    { key: 'rateTL', label: 'Interest rate', kind: 'line' },
+    { key: 'intTL', label: 'Interest expense', kind: 'line' },
+    { kind: 'section', label: 'Cash available for revolver' },
+    { key: 'begCash', label: 'Beginning cash', kind: 'line' },
+    { key: 'cfoR', label: 'Cash from operations', kind: 'line' },
+    { key: 'cfiR', label: 'Cash from investing', kind: 'line' },
+    { key: 'termRepayR', label: 'Term-loan repayment', kind: 'line' },
+    { key: 'divR', label: 'Dividends paid', kind: 'line' },
+    { key: 'eqR', label: 'Equity issuance', kind: 'line' },
+    { key: 'preRev', label: 'Cash available before revolver', kind: 'subtotal' },
+    { kind: 'section', label: 'Revolver (roll-forward)' },
+    { key: 'beginRev', label: 'Beginning balance', kind: 'line' },
+    { key: 'drawRev', label: 'Draw / (repayment)', kind: 'line' },
+    { key: 'endRev', label: 'Ending balance', kind: 'subtotal' },
+    { key: 'rateRev', label: 'Interest rate', kind: 'line' },
+    { key: 'intRev', label: 'Interest expense', kind: 'line' },
+  ]);
+  formula(SHEET.debt, 'endTL', 0, layout.ref(SHEET.bs, 'termLoan', 0), bsVal('termLoan', 0), 'link', FMT.currency, { bold: true, topBorder: true });
+  formula(SHEET.debt, 'endRev', 0, layout.ref(SHEET.bs, 'revolver', 0), bsVal('revolver', 0), 'link', FMT.currency, { bold: true, topBorder: true });
+  for (let t = 1; t <= N; t++) {
+    // Term loan.
+    formula(SHEET.debt, 'beginTL', t, debtRef('endTL', t - 1), bsVal('termLoan', t - 1), 'formula', FMT.currency);
+    formula(SHEET.debt, 'amortTL', t, `-MIN(${debtRef('beginTL', t)},term_amort_pct*open_termloan)`, -cf(t).termLoanRepayment, 'formula', FMT.currency);
+    formula(SHEET.debt, 'endTL', t, `${debtRef('beginTL', t)}+${debtRef('amortTL', t)}`, bsVal('termLoan', t), 'formula', FMT.currency, { bold: true, topBorder: true });
+    formula(SHEET.debt, 'rateTL', t, 'term_rate', assumptions.debt.termLoanRate, 'formula', FMT.percent);
+    formula(SHEET.debt, 'intTL', t, `term_rate*AVERAGE(${debtRef('beginTL', t)},${debtRef('endTL', t)})`, isVal('termLoanInterest', t), 'formula', FMT.currency);
+    // Cash available for the revolver (transparent precedents).
+    formula(SHEET.debt, 'begCash', t, layout.ref(SHEET.bs, 'cash', t - 1), bsVal('cash', t - 1), 'link', FMT.currency);
+    formula(SHEET.debt, 'cfoR', t, layout.ref(SHEET.cf, 'cfo', t), cf(t).cfo, 'link', FMT.currency);
+    formula(SHEET.debt, 'cfiR', t, layout.ref(SHEET.cf, 'cfi', t), cf(t).cfi, 'link', FMT.currency);
+    formula(SHEET.debt, 'termRepayR', t, layout.ref(SHEET.cf, 'termRepay', t), -cf(t).termLoanRepayment, 'link', FMT.currency);
+    formula(SHEET.debt, 'divR', t, layout.ref(SHEET.cf, 'dividends', t), -cf(t).dividends, 'link', FMT.currency);
+    formula(SHEET.debt, 'eqR', t, layout.ref(SHEET.cf, 'equityIssuance', t), cf(t).equityIssuance, 'link', FMT.currency);
+    formula(SHEET.debt, 'preRev', t, `${debtRef('begCash', t)}+${debtRef('cfoR', t)}+${debtRef('cfiR', t)}+${debtRef('termRepayR', t)}+${debtRef('divR', t)}+${debtRef('eqR', t)}`, cf(t).endingCash - cf(t).revolverDraw, 'formula', FMT.currency, { bold: true, topBorder: true });
+    // Revolver.
+    formula(SHEET.debt, 'beginRev', t, debtRef('endRev', t - 1), bsVal('revolver', t - 1), 'formula', FMT.currency);
+    formula(SHEET.debt, 'drawRev', t, `MAX(0,${debtRef('beginRev', t)}-${debtRef('preRev', t)}+min_cash)-${debtRef('beginRev', t)}`, cf(t).revolverDraw, 'formula', FMT.currency);
+    formula(SHEET.debt, 'endRev', t, `${debtRef('beginRev', t)}+${debtRef('drawRev', t)}`, bsVal('revolver', t), 'formula', FMT.currency, { bold: true, topBorder: true });
+    formula(SHEET.debt, 'rateRev', t, 'revolver_rate', assumptions.debt.revolverRate, 'formula', FMT.percent);
+    formula(SHEET.debt, 'intRev', t, `revolver_rate*IF(circ_switch=1,${debtRef('beginRev', t)},AVERAGE(${debtRef('beginRev', t)},${debtRef('endRev', t)}))`, isVal('revolverInterest', t), 'formula', FMT.currency);
+  }
+
   // ════════════════ Ratios & Analysis ════════════════════════════════════════
   addSheet(SHEET.ratios, { tab: TAB_COLORS.ratios });
   writeChrome(SHEET.ratios, false);
   layoutStatement(SHEET.ratios, [
-    { kind: 'section', label: 'Margins' },
+    { kind: 'section', label: 'Profitability margins' },
     { key: 'grossMargin', label: 'Gross margin', kind: 'line' },
     { key: 'ebitdaMargin', label: 'EBITDA margin', kind: 'line' },
-    { key: 'ebitMargin', label: 'EBIT margin', kind: 'line' },
+    { key: 'ebitMargin', label: 'EBIT (operating) margin', kind: 'line' },
     { key: 'netMargin', label: 'Net margin', kind: 'line' },
     { kind: 'section', label: 'Growth' },
     { key: 'revGrowth', label: 'Revenue growth (YoY)', kind: 'line' },
     { key: 'niGrowth', label: 'Net income growth (YoY)', kind: 'line' },
+    { kind: 'section', label: 'Expense ratios' },
+    { key: 'effIntRate', label: 'Effective interest rate', kind: 'line' },
+    { key: 'interestBurden', label: 'Interest burden (EBT / EBIT)', kind: 'line' },
+    { key: 'effTaxRate', label: 'Effective tax rate', kind: 'line' },
+    { key: 'taxBurden', label: 'Tax burden (NI / EBT)', kind: 'line' },
     { kind: 'section', label: 'Returns' },
     { key: 'roe', label: 'Return on equity', kind: 'line' },
     { key: 'roa', label: 'Return on assets', kind: 'line' },
     { key: 'roic', label: 'Return on invested capital', kind: 'line' },
-    { kind: 'section', label: 'Credit & liquidity' },
+    { kind: 'section', label: 'Efficiency (asset utilization)' },
+    { key: 'assetTurnover', label: 'Total asset turnover', kind: 'line' },
+    { key: 'ppeTurnover', label: 'PP&E turnover', kind: 'line' },
+    { key: 'arDays', label: 'A/R days', kind: 'line' },
+    { key: 'invDays', label: 'Inventory days', kind: 'line' },
+    { key: 'apDays', label: 'A/P days', kind: 'line' },
+    { kind: 'section', label: 'Leverage & solvency' },
+    { key: 'assetsToEquity', label: 'Total assets / equity', kind: 'line' },
+    { key: 'debtToEquity', label: 'Debt / equity', kind: 'line' },
     { key: 'netDebtEbitda', label: 'Net debt / EBITDA', kind: 'line' },
+    { key: 'debtToEbitda', label: 'Debt / EBITDA', kind: 'line' },
     { key: 'coverage', label: 'Interest coverage (EBIT)', kind: 'line' },
+    { key: 'ebitdaInterest', label: 'EBITDA / interest', kind: 'line' },
+    { kind: 'section', label: 'Liquidity' },
     { key: 'currentRatio', label: 'Current ratio', kind: 'line' },
+    { key: 'quickRatio', label: 'Quick (acid-test) ratio', kind: 'line' },
     { kind: 'section', label: 'Cash generation' },
     { key: 'fcf', label: 'Free cash flow (CFO + CFI)', kind: 'line' },
     { key: 'fcfConv', label: 'FCF / EBITDA', kind: 'line' },
+    { kind: 'section', label: 'DuPont decomposition (ROE)' },
+    { key: 'du_taxBurden', label: 'Tax burden (NI / EBT)', kind: 'line' },
+    { key: 'du_interestBurden', label: '× Interest burden (EBT / EBIT)', kind: 'line' },
+    { key: 'du_ebitMargin', label: '× EBIT margin', kind: 'line' },
+    { key: 'du_assetTurnover', label: '× Asset turnover', kind: 'line' },
+    { key: 'du_leverage', label: '× Financial leverage (A / E)', kind: 'line' },
+    { key: 'du_roe', label: '= Return on equity (DuPont)', kind: 'subtotal' },
+    { key: 'du_check', label: 'Reconciliation vs. ROE', kind: 'line' },
   ]);
   for (let t = 1; t <= N; t++) {
     const p = model.periods[t - 1]!;
     const is = (k: keyof IncomeStatement) => layout.ref(SHEET.is, k, t);
     const bs = (k: keyof BalanceSheet) => layout.ref(SHEET.bs, k, t);
     const cfr = (k: string) => layout.ref(SHEET.cf, k, t);
-    const rr = (key: string, f: string, result: number, fmt: string) =>
-      formula(SHEET.ratios, key, t, f, result, 'formula', fmt);
-    const interest = p.income.revolverInterest + p.income.termLoanInterest;
-    const investedCapital = p.balance.revolver + p.balance.termLoan + p.balance.totalEquity - p.balance.cash;
+    const du = (k: string) => layout.ref(SHEET.ratios, k, t);
+    const rr = (key: string, f: string, result: number, fmt: string, opts: ValueOpts = {}) =>
+      formula(SHEET.ratios, key, t, f, result, 'formula', fmt, opts);
+    const inc = p.income;
+    const bal = p.balance;
+    const debtExpr = `(${bs('revolver')}+${bs('termLoan')})`;
+    const intExpr = `(${is('revolverInterest')}+${is('termLoanInterest')})`;
+    const debtAmt = bal.revolver + bal.termLoan;
+    const interest = inc.revolverInterest + inc.termLoanInterest;
+    const investedCapital = bal.revolver + bal.termLoan + bal.totalEquity - bal.cash;
     const prevNI = t === 1 ? undefined : model.periods[t - 2]!.income.netIncome;
+    const taxBurdenV = inc.ebt !== 0 ? inc.netIncome / inc.ebt : 0;
+    const intBurdenV = inc.ebit !== 0 ? inc.ebt / inc.ebit : 0;
+    const ebitMarginV = inc.ebit / inc.revenue;
+    const assetTurnV = inc.revenue / bal.totalAssets;
+    const leverageV = bal.totalEquity !== 0 ? bal.totalAssets / bal.totalEquity : 0;
 
-    rr('grossMargin', `${is('grossProfit')}/${is('revenue')}`, p.income.grossProfit / p.income.revenue, FMT.percent);
-    rr('ebitdaMargin', `${is('ebitda')}/${is('revenue')}`, p.income.ebitda / p.income.revenue, FMT.percent);
-    rr('ebitMargin', `${is('ebit')}/${is('revenue')}`, p.income.ebit / p.income.revenue, FMT.percent);
-    rr('netMargin', `${is('netIncome')}/${is('revenue')}`, p.income.netIncome / p.income.revenue, FMT.percent);
+    rr('grossMargin', `${is('grossProfit')}/${is('revenue')}`, inc.grossProfit / inc.revenue, FMT.percent);
+    rr('ebitdaMargin', `${is('ebitda')}/${is('revenue')}`, inc.ebitda / inc.revenue, FMT.percent);
+    rr('ebitMargin', `${is('ebit')}/${is('revenue')}`, ebitMarginV, FMT.percent);
+    rr('netMargin', `${is('netIncome')}/${is('revenue')}`, inc.netIncome / inc.revenue, FMT.percent);
     rr(
       'revGrowth',
       t === 1 ? `${is('revenue')}/revenueBase-1` : `${is('revenue')}/${layout.ref(SHEET.is, 'revenue', t - 1)}-1`,
-      p.income.revenue / (t === 1 ? assumptions.revenueBase : model.periods[t - 2]!.income.revenue) - 1,
+      inc.revenue / (t === 1 ? assumptions.revenueBase : model.periods[t - 2]!.income.revenue) - 1,
       FMT.percent,
     );
     rr(
       'niGrowth',
       t === 1 ? '0' : `IF(${layout.ref(SHEET.is, 'netIncome', t - 1)}=0,0,${is('netIncome')}/${layout.ref(SHEET.is, 'netIncome', t - 1)}-1)`,
-      prevNI === undefined || prevNI === 0 ? 0 : p.income.netIncome / prevNI - 1,
+      prevNI === undefined || prevNI === 0 ? 0 : inc.netIncome / prevNI - 1,
       FMT.percent,
     );
-    rr('roe', `${is('netIncome')}/${bs('totalEquity')}`, p.income.netIncome / p.balance.totalEquity, FMT.percent);
-    rr('roa', `${is('netIncome')}/${bs('totalAssets')}`, p.income.netIncome / p.balance.totalAssets, FMT.percent);
+    // Expense ratios.
+    rr('effIntRate', `IF(${debtExpr}=0,0,${intExpr}/${debtExpr})`, debtAmt !== 0 ? interest / debtAmt : 0, FMT.percent);
+    rr('interestBurden', `IF(${is('ebit')}=0,0,${is('ebt')}/${is('ebit')})`, intBurdenV, FMT.percent);
+    rr('effTaxRate', `IF(${is('ebt')}=0,0,${is('tax')}/${is('ebt')})`, inc.ebt !== 0 ? inc.tax / inc.ebt : 0, FMT.percent);
+    rr('taxBurden', `IF(${is('ebt')}=0,0,${is('netIncome')}/${is('ebt')})`, taxBurdenV, FMT.percent);
+    // Returns.
+    rr('roe', `${is('netIncome')}/${bs('totalEquity')}`, inc.netIncome / bal.totalEquity, FMT.percent);
+    rr('roa', `${is('netIncome')}/${bs('totalAssets')}`, inc.netIncome / bal.totalAssets, FMT.percent);
     rr(
       'roic',
       `${is('ebit')}*(1-tax_rate)/(${bs('revolver')}+${bs('termLoan')}+${bs('totalEquity')}-${bs('cash')})`,
-      investedCapital !== 0 ? (p.income.ebit * (1 - assumptions.drivers.taxRate)) / investedCapital : 0,
+      investedCapital !== 0 ? (inc.ebit * (1 - assumptions.drivers.taxRate)) / investedCapital : 0,
       FMT.percent,
     );
-    rr(
-      'netDebtEbitda',
-      `(${bs('revolver')}+${bs('termLoan')}-${bs('cash')})/${is('ebitda')}`,
-      (p.balance.revolver + p.balance.termLoan - p.balance.cash) / p.income.ebitda,
-      FMT.multiple,
-    );
-    rr(
-      'coverage',
-      `IF((${is('revolverInterest')}+${is('termLoanInterest')})=0,0,${is('ebit')}/(${is('revolverInterest')}+${is('termLoanInterest')}))`,
-      interest > 1e-9 ? p.income.ebit / interest : 0,
-      FMT.multiple,
-    );
-    rr('currentRatio', `${bs('totalCurrentAssets')}/${bs('totalCurrentLiabilities')}`, p.balance.totalCurrentAssets / p.balance.totalCurrentLiabilities, FMT.multiple);
+    // Asset utilization (turnover as a multiple; receivables/inventory/payables as days).
+    rr('assetTurnover', `${is('revenue')}/${bs('totalAssets')}`, assetTurnV, FMT.multiple);
+    rr('ppeTurnover', `IF(${bs('netPPE')}=0,0,${is('revenue')}/${bs('netPPE')})`, bal.netPPE !== 0 ? inc.revenue / bal.netPPE : 0, FMT.multiple);
+    rr('arDays', `${bs('accountsReceivable')}*365/${is('revenue')}`, (bal.accountsReceivable * 365) / inc.revenue, FMT.days);
+    rr('invDays', `IF(${is('cogs')}=0,0,${bs('inventory')}*365/${is('cogs')})`, inc.cogs !== 0 ? (bal.inventory * 365) / inc.cogs : 0, FMT.days);
+    rr('apDays', `IF(${is('cogs')}=0,0,${bs('accountsPayable')}*365/${is('cogs')})`, inc.cogs !== 0 ? (bal.accountsPayable * 365) / inc.cogs : 0, FMT.days);
+    // Leverage & solvency.
+    rr('assetsToEquity', `${bs('totalAssets')}/${bs('totalEquity')}`, leverageV, FMT.multiple);
+    rr('debtToEquity', `IF(${bs('totalEquity')}=0,0,${debtExpr}/${bs('totalEquity')})`, bal.totalEquity !== 0 ? debtAmt / bal.totalEquity : 0, FMT.multiple);
+    rr('netDebtEbitda', `(${bs('revolver')}+${bs('termLoan')}-${bs('cash')})/${is('ebitda')}`, (debtAmt - bal.cash) / inc.ebitda, FMT.multiple);
+    rr('debtToEbitda', `${debtExpr}/${is('ebitda')}`, debtAmt / inc.ebitda, FMT.multiple);
+    rr('coverage', `IF(${intExpr}=0,0,${is('ebit')}/${intExpr})`, interest > 1e-9 ? inc.ebit / interest : 0, FMT.multiple);
+    rr('ebitdaInterest', `IF(${intExpr}=0,0,${is('ebitda')}/${intExpr})`, interest > 1e-9 ? inc.ebitda / interest : 0, FMT.multiple);
+    // Liquidity.
+    rr('currentRatio', `${bs('totalCurrentAssets')}/${bs('totalCurrentLiabilities')}`, bal.totalCurrentAssets / bal.totalCurrentLiabilities, FMT.multiple);
+    rr('quickRatio', `(${bs('totalCurrentAssets')}-${bs('inventory')})/${bs('totalCurrentLiabilities')}`, (bal.totalCurrentAssets - bal.inventory) / bal.totalCurrentLiabilities, FMT.multiple);
+    // Cash generation.
     rr('fcf', `${cfr('cfo')}+${cfr('cfi')}`, p.cashFlow.cfo + p.cashFlow.cfi, FMT.currency);
-    rr('fcfConv', `(${cfr('cfo')}+${cfr('cfi')})/${is('ebitda')}`, (p.cashFlow.cfo + p.cashFlow.cfi) / p.income.ebitda, FMT.percent);
+    rr('fcfConv', `(${cfr('cfo')}+${cfr('cfi')})/${is('ebitda')}`, (p.cashFlow.cfo + p.cashFlow.cfi) / inc.ebitda, FMT.percent);
+    // DuPont 5-lever: tax burden × interest burden × EBIT margin × asset turnover × leverage = ROE.
+    rr('du_taxBurden', `IF(${is('ebt')}=0,0,${is('netIncome')}/${is('ebt')})`, taxBurdenV, FMT.percent);
+    rr('du_interestBurden', `IF(${is('ebit')}=0,0,${is('ebt')}/${is('ebit')})`, intBurdenV, FMT.percent);
+    rr('du_ebitMargin', `${is('ebit')}/${is('revenue')}`, ebitMarginV, FMT.percent);
+    rr('du_assetTurnover', `${is('revenue')}/${bs('totalAssets')}`, assetTurnV, FMT.multiple);
+    rr('du_leverage', `${bs('totalAssets')}/${bs('totalEquity')}`, leverageV, FMT.multiple);
+    rr('du_roe', `${du('du_taxBurden')}*${du('du_interestBurden')}*${du('du_ebitMargin')}*${du('du_assetTurnover')}*${du('du_leverage')}`, inc.netIncome / bal.totalEquity, FMT.percent, { bold: true, topBorder: true });
+    rr('du_check', `${du('du_roe')}-${du('roe')}`, 0, FMT.percent2);
   }
 
   // ════════════════ DCF (optional) ═══════════════════════════════════════════
@@ -495,6 +680,10 @@ export async function buildWorkbook(
 
   // ════════════════ Checks ═══════════════════════════════════════════════════
   writeChecks(addSheet(SHEET.checks, { tab: TAB_COLORS.checks }), wb, layout, model, dcf, N);
+  const checkCount = N * 2 + (dcf ? 1 : 0);
+
+  // ════════════════ Cover (populated now that every sheet exists) ═════════════
+  writeCover(coverSheet, wb, model, !!dcf, checkCount);
 
   const buffer = await wb.xlsx.writeBuffer();
   return injectIterativeCalc(new Uint8Array(buffer as unknown as ArrayBuffer));
@@ -701,39 +890,102 @@ function findDcfRow(wb: ExcelJS.Workbook, label: string): number {
 }
 
 // ── Cover sheet ──────────────────────────────────────────────────────────────
-function writeCover(sheet: ExcelJS.Worksheet, model: Model, hasDcf: boolean): void {
-  sheet.getColumn(1).width = 30;
-  sheet.getColumn(2).width = 52;
-  sheet.mergeCells(1, 1, 1, 2);
+// Per CFI's Layout & Printing guidance, the cover carries a table of contents
+// and a model-checks summary up front, where they are most visible.
+function writeCover(
+  sheet: ExcelJS.Worksheet,
+  wb: ExcelJS.Workbook,
+  model: Model,
+  hasDcf: boolean,
+  checkCount: number,
+): void {
+  sheet.getColumn(1).width = 34;
+  sheet.getColumn(2).width = 50;
+  sheet.getColumn(3).width = 2;
+  sheet.getColumn(4).width = 30;
+  sheet.getColumn(5).width = 18;
+  sheet.mergeCells(1, 1, 1, 5);
   const title = sheet.getCell(1, 1);
-  title.value = 'ProForma — Financial Model';
+  title.value = `ProForma — ${model.meta.company}`;
   styleHeaderCell(title, { center: true });
   title.font = { name: FONT, size: 16, bold: true, color: { argb: 'FFFFFFFF' } };
   sheet.getRow(1).height = 28;
 
   const balanced = model.periods.every((p) => Math.abs(p.balance.balanceCheck) < 0.01);
-  const rows: Array<[string, string]> = [
+  const facts: Array<[string, string]> = [
     ['Company', model.meta.company],
     ['Currency / units', `${model.meta.currency} in ${model.meta.units}`],
     ['Forecast horizon', `${model.meta.years} years`],
     ['Statements', 'Income Statement · Balance Sheet · Cash Flow'],
+    ['Schedules', 'Working Capital · PP&E & Depreciation · Debt'],
+    ['Analysis', 'Ratios & DuPont decomposition'],
     ['Valuation', hasDcf ? 'Discounted Cash Flow (DCF)' : '—'],
     ['Balance sheet ties out', balanced ? 'Yes' : 'See Checks tab'],
     ['Circular reference', 'Revolver ↔ interest, solved by iterative calc'],
   ];
   let r = 3;
-  for (const [k, v] of rows) {
+  for (const [k, v] of facts) {
     sheet.getCell(r, 1).value = k;
     styleLabel(sheet.getCell(r, 1), { bold: true });
     sheet.getCell(r, 2).value = v;
     styleLabel(sheet.getCell(r, 2));
     r++;
   }
+
+  // Table of contents (internal hyperlinks to every other tab).
   r++;
-  sheet.mergeCells(r, 1, r, 2);
+  const tocHdr = sheet.getCell(r, 1);
+  tocHdr.value = 'Contents';
+  styleSection(tocHdr);
+  r++;
+  for (const w of wb.worksheets) {
+    if (w.name === SHEET.cover) continue;
+    const cell = sheet.getCell(r, 1);
+    cell.value = { text: w.name, hyperlink: `#'${w.name}'!A1` };
+    cell.font = { name: FONT, size: 10, color: { argb: 'FF0000FF' }, underline: true };
+    r++;
+  }
+
+  // Model-checks summary, referencing the live Checks tab.
+  const checkHdr = sheet.getCell(3, 4);
+  checkHdr.value = 'Model checks';
+  styleSection(checkHdr);
+  sheet.mergeCells(3, 4, 3, 5);
+  const range = `'${SHEET.checks}'!$B$${FIRST_DATA_ROW}:$B$${FIRST_DATA_ROW + checkCount - 1}`;
+  const fails = model.periods.reduce(
+    (n, p) =>
+      n +
+      (Math.abs(p.balance.balanceCheck) < 0.01 ? 0 : 1) +
+      (Math.abs(p.cashFlow.endingCash - p.balance.cash) < 0.01 ? 0 : 1),
+    0,
+  );
+  sheet.getCell(4, 4).value = 'Status';
+  styleLabel(sheet.getCell(4, 4), { bold: true });
+  const status = sheet.getCell(4, 5);
+  status.value = {
+    formula: `IF(COUNTIF(${range},"FAIL")=0,"All checks pass","REVIEW CHECKS")`,
+    result: fails === 0 ? 'All checks pass' : 'REVIEW CHECKS',
+  };
+  status.font = { name: FONT, size: 10, bold: true, color: { argb: fails === 0 ? COLOR_OK : COLORS_NEG } };
+  sheet.getCell(5, 4).value = 'Failures';
+  styleLabel(sheet.getCell(5, 4), { bold: true });
+  const failCell = sheet.getCell(5, 5);
+  failCell.value = { formula: `COUNTIF(${range},"FAIL")`, result: fails };
+  styleValue(failCell, 'formula', '#,##0');
+  sheet.getCell(6, 4).value = 'Total checks';
+  styleLabel(sheet.getCell(6, 4), { bold: true });
+  const totalCell = sheet.getCell(6, 5);
+  totalCell.value = checkCount;
+  styleValue(totalCell, 'formula', '#,##0');
+
+  r++;
+  sheet.mergeCells(r, 1, r, 5);
   const disclaimer = sheet.getCell(r, 1);
   disclaimer.value =
     'Not investment advice. Educational tool; outputs depend entirely on the assumptions provided.';
   disclaimer.font = { ...NOTE_FONT };
   disclaimer.alignment = { wrapText: true };
 }
+
+const COLOR_OK = 'FF2E7D32';
+const COLORS_NEG = 'FFC00000';
